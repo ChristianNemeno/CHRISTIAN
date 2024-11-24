@@ -1,9 +1,21 @@
-; this is my starting point unless shit happens sa ubang files 
-; in this code it works sa create and view
 
 .MODEL SMALL
 .STACK 100H
 .DATA
+
+OPENING_MSG DB 10,13,'----------------------------------------',10,13
+            DB '    WELCOME TO YOUR TO-DO LIST MANAGER',10,13
+            DB '----------------------------------------',10,13
+            DB ' Press any key to continue...',10,13,'$'
+    ; Data for login/register
+REGISTER_MSG DB 10,13,'--- Register ---',10,13,'Enter Username: $'
+LOGIN_MSG DB 10,13,'--- Login ---',10,13,'Enter Username: $'
+LOGIN_SUCCESS DB 10,13,'Login Successful! Welcome!',10,13,'$'
+LOGIN_FAILURE DB 10,13,'Login Failed! Try Again.',10,13,'$'
+USERNAME DB 20 DUP(0)
+PASSWORD DB 20 DUP(0)
+INPUT_USERNAME DB 20 DUP(0)
+INPUT_PASSWORD DB 20 DUP(0)
     ; Constants
     MAX_TASKS    EQU 10
     TASK_SIZE    EQU 52  ; 50 chars for task + 1 for status + 1 for '$'
@@ -39,6 +51,9 @@ MAIN PROC
     ; Initialize data segment
     MOV AX, @DATA
     MOV DS, AX
+    JMP START_SCREEN
+    JMP REGISTER
+
 
 GOTO_MENU:
     JMP MENU
@@ -63,6 +78,8 @@ MENU:
     MOV SI, AX
     JMP WORD PTR [JUMP_TABLE + SI]
 
+
+
 ; Utility procedures
 CHECK_RANGE PROC
     CMP AL, 0
@@ -84,40 +101,124 @@ MENU_INVALID:
     JMP MENU
 CHECK_MENU_CHOICE ENDP
 
-DELETE_TASK PROC
-    LOCAL_INVALID_HANDLER:   ; Local handler for this procedure
-        JMP GOTO_MENU
+; Opening Screen
+START_SCREEN:
+    MOV AH, 09H
+    LEA DX, OPENING_MSG
+    INT 21H
+    MOV AH, 08H ; Wait for any key press
+    INT 21H
+    RET
 
+
+; Register and Login System
+REGISTER:
+    MOV AH, 09H
+    LEA DX, REGISTER_MSG
+    INT 21H
+    ; Input username
+    LEA DI, USERNAME
+    CALL INPUT_STRING
+    ; Input password
+    LEA DI, PASSWORD
+    CALL INPUT_STRING
+    RET
+
+LOGIN:
+    MOV AH, 09H
+    LEA DX, LOGIN_MSG
+    INT 21H
+    ; Input username
+    LEA DI, INPUT_USERNAME
+    CALL INPUT_STRING
+    ; Input password
+    LEA DI, INPUT_PASSWORD
+    CALL INPUT_STRING
+    ; Compare credentials
+    LEA SI, USERNAME
+    LEA DI, INPUT_USERNAME
+    CALL STRING_COMPARE
+    JNZ LOGIN_FAIL
+    LEA SI, PASSWORD
+    LEA DI, INPUT_PASSWORD
+    CALL STRING_COMPARE
+    JNZ LOGIN_FAIL
+    MOV AH, 09H
+    LEA DX, LOGIN_SUCCESS
+    INT 21H
+    RET
+
+LOGIN_FAIL:
+    MOV AH, 09H
+    LEA DX, LOGIN_FAILURE
+    INT 21H
+    RET
+
+; Helper subroutines
+INPUT_STRING:
+    MOV AH, 0AH
+    INT 21H
+    RET
+
+STRING_COMPARE:
+    CLD
+    REPE CMPSB
+    JE STRING_MATCH
+    MOV AL, 1
+    RET
+STRING_MATCH:
+    XOR AL, AL
+    RET
+
+
+
+
+; Fixed DELETE_TASK procedure
+DELETE_TASK PROC
     CMP TASK_COUNT, 0
     JE EMPTY_DEL
     
+    ; Display prompt
     LEA DX, TASK_NUM
     MOV AH, 09H
     INT 21H
     
+    ; Get task number
     MOV AH, 01H
     INT 21H
     SUB AL, '1'
     
-    CALL CHECK_RANGE
-    CMP AL, 0FFH   ; Check error flag
-    JE LOCAL_INVALID_HANDLER ; Use local handler
+    ; Validate input
+    CMP AL, 0
+    JL INVALID_DEL
     
+    MOV BL, TASK_COUNT
+    DEC BL
+    CMP AL, BL
+    JG INVALID_DEL
+    
+    ; Calculate source and destination addresses
     XOR AH, AH
     MOV BX, TASK_SIZE
-    MUL BX
+    MUL BX          ; AX = task_number * TASK_SIZE
     LEA SI, TASKS
-    ADD SI, AX
+    ADD SI, AX      ; SI points to task to delete
+    MOV DI, SI      ; DI = destination
+    ADD SI, TASK_SIZE  ; SI = source
     
-    MOV DI, SI
-    ADD SI, TASK_SIZE
+    ; Calculate number of bytes to move
+    MOV AL, TASK_COUNT
+    SUB AL, 1       ; Convert to 0-based index
+    SUB AL, [BP-1]  ; Subtract task number
+    MOV CL, AL      ; CL = number of tasks to move
     
-    MOV CX, MAX_TASKS
-    SUB CL, AL
-    DEC CX
+    ; If this is the last task, no need to move
+    CMP CL, 0
+    JLE DEL_LAST
     
-    JCXZ DEL_LAST
-    
+    ; Move remaining tasks
+    MOV CH, 0       ; Clear high byte of CX
+    MOV BX, TASK_SIZE
 DEL_LOOP:
     PUSH CX
     MOV CX, TASK_SIZE
@@ -128,54 +229,80 @@ DEL_LOOP:
 DEL_LAST:
     DEC TASK_COUNT
     LEA DX, SUCCESS_MSG
-    JMP SHORT SHOW_DEL
+    JMP SHOW_DEL
+
+INVALID_DEL:
+    LEA DX, EMPTY_MSG
+    JMP SHOW_DEL
 
 EMPTY_DEL:
     LEA DX, EMPTY_MSG
 SHOW_DEL:
     CALL SHOW_MESSAGE
+    RET
 DELETE_TASK ENDP
 
 UPDATE_TASK PROC
-    LOCAL_INVALID_HANDLER1:   ; Local handler for this procedure
-        JMP GOTO_MENU
-
     CMP TASK_COUNT, 0
     JE EMPTY_UPD
     
+    ; Display prompt for task number
     LEA DX, TASK_NUM
     MOV AH, 09H
     INT 21H
     
+    ; Get task number
     MOV AH, 01H
     INT 21H
-    SUB AL, '1'
+    SUB AL, '1'     ; Convert to 0-based index
     
-    CALL CHECK_RANGE
-    CMP AL, 0FFH   ; Check error flag
-    JE LOCAL_INVALID_HANDLER1 ; Use local handler
+    ; Validate task number
+    CMP AL, 0
+    JL INVALID_UPD
     
-    XOR AH, AH
+    MOV BL, TASK_COUNT
+    DEC BL          ; Convert count to 0-based for comparison
+    CMP AL, BL
+    JG INVALID_UPD
+    
+    ; Calculate task address
+    XOR AH, AH      ; Clear high byte of AX
     MOV BX, TASK_SIZE
-    MUL BX
+    MUL BX          ; AX = task_number * TASK_SIZE
     LEA DI, TASKS
-    ADD DI, AX
+    ADD DI, AX      ; DI now points to the task
     
+    ; Show status prompt
     LEA DX, STATUS_MSG
     MOV AH, 09H
     INT 21H
     
+    ; Get new status
     MOV AH, 01H
     INT 21H
     
+    ; Validate status input (must be 0 or 1)
+    CMP AL, '0'
+    JB INVALID_UPD
+    CMP AL, '1'
+    JA INVALID_UPD
+    
+    ; Update status
     MOV [DI + 50], AL
+    
+    ; Show success message
     LEA DX, SUCCESS_MSG
-    JMP SHORT SHOW_UPD
+    JMP SHOW_UPD
+
+INVALID_UPD:
+    LEA DX, EMPTY_MSG    ; Use EMPTY_MSG for invalid input
+    JMP SHOW_UPD
 
 EMPTY_UPD:
     LEA DX, EMPTY_MSG
 SHOW_UPD:
     CALL SHOW_MESSAGE
+    RET
 UPDATE_TASK ENDP
 
 PRINT_NEWLINE PROC
@@ -207,6 +334,7 @@ GET_CHAR:
     JNE GET_CHAR
     
 GET_DONE:
+    MOV BYTE PTR [DI], '$'    ; Add string terminator right after input
     POP CX
     RET
 GET_STRING ENDP
@@ -254,6 +382,7 @@ SHOW_AND_RETURN:
     CALL SHOW_MESSAGE
 CREATE_TASK ENDP
 
+; Modified VIEW_TASKS procedure - Status display removed
 VIEW_TASKS PROC
     CMP TASK_COUNT, 0
     JE EMPTY
@@ -267,6 +396,7 @@ VIEW_TASKS PROC
 NEXT_TASK:
     PUSH CX
     
+    ; Display task number
     MOV DL, '['
     MOV AH, 02H
     INT 21H
@@ -281,23 +411,34 @@ NEXT_TASK:
     MOV DL, ' '
     INT 21H
     
+    ; Display task text
     MOV DX, SI
     MOV AH, 09H
     INT 21H
     
+    ; Display status
     MOV DL, ' '
     MOV AH, 02H
     INT 21H
     MOV DL, '['
     INT 21H
-    MOV DL, [SI + 50]
+    
+    ; Check status and display 'D' if done
+    CMP BYTE PTR [SI + 50], '1'
+    JNE NOT_DONE
+    MOV DL, 'D'
+    JMP SHOW_STATUS
+NOT_DONE:
+    MOV DL, ' '
+SHOW_STATUS:
     INT 21H
+    
     MOV DL, ']'
     INT 21H
     
     CALL PRINT_NEWLINE
     
-    ADD SI, TASK_SIZE
+    ADD SI, TASK_SIZE  ; Move to next task
     POP CX
     LOOP NEXT_TASK
     JMP MENU

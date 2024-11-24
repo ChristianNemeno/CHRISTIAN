@@ -1,5 +1,5 @@
-; this is my starting point unless shit happens sa ubang files 
-; in this code it works sa create and view
+; works CRUD DONE  
+
 
 .MODEL SMALL
 .STACK 100H
@@ -84,40 +84,52 @@ MENU_INVALID:
     JMP MENU
 CHECK_MENU_CHOICE ENDP
 
+; Fixed DELETE_TASK procedure
 DELETE_TASK PROC
-    LOCAL_INVALID_HANDLER:   ; Local handler for this procedure
-        JMP GOTO_MENU
-
     CMP TASK_COUNT, 0
     JE EMPTY_DEL
     
+    ; Display prompt
     LEA DX, TASK_NUM
     MOV AH, 09H
     INT 21H
     
+    ; Get task number
     MOV AH, 01H
     INT 21H
     SUB AL, '1'
     
-    CALL CHECK_RANGE
-    CMP AL, 0FFH   ; Check error flag
-    JE LOCAL_INVALID_HANDLER ; Use local handler
+    ; Validate input
+    CMP AL, 0
+    JL INVALID_DEL
     
+    MOV BL, TASK_COUNT
+    DEC BL
+    CMP AL, BL
+    JG INVALID_DEL
+    
+    ; Calculate source and destination addresses
     XOR AH, AH
     MOV BX, TASK_SIZE
-    MUL BX
+    MUL BX          ; AX = task_number * TASK_SIZE
     LEA SI, TASKS
-    ADD SI, AX
+    ADD SI, AX      ; SI points to task to delete
+    MOV DI, SI      ; DI = destination
+    ADD SI, TASK_SIZE  ; SI = source
     
-    MOV DI, SI
-    ADD SI, TASK_SIZE
+    ; Calculate number of bytes to move
+    MOV AL, TASK_COUNT
+    SUB AL, 1       ; Convert to 0-based index
+    SUB AL, [BP-1]  ; Subtract task number
+    MOV CL, AL      ; CL = number of tasks to move
     
-    MOV CX, MAX_TASKS
-    SUB CL, AL
-    DEC CX
+    ; If this is the last task, no need to move
+    CMP CL, 0
+    JLE DEL_LAST
     
-    JCXZ DEL_LAST
-    
+    ; Move remaining tasks
+    MOV CH, 0       ; Clear high byte of CX
+    MOV BX, TASK_SIZE
 DEL_LOOP:
     PUSH CX
     MOV CX, TASK_SIZE
@@ -128,54 +140,80 @@ DEL_LOOP:
 DEL_LAST:
     DEC TASK_COUNT
     LEA DX, SUCCESS_MSG
-    JMP SHORT SHOW_DEL
+    JMP SHOW_DEL
+
+INVALID_DEL:
+    LEA DX, EMPTY_MSG
+    JMP SHOW_DEL
 
 EMPTY_DEL:
     LEA DX, EMPTY_MSG
 SHOW_DEL:
     CALL SHOW_MESSAGE
+    RET
 DELETE_TASK ENDP
 
 UPDATE_TASK PROC
-    LOCAL_INVALID_HANDLER1:   ; Local handler for this procedure
-        JMP GOTO_MENU
-
     CMP TASK_COUNT, 0
     JE EMPTY_UPD
     
+    ; Display prompt for task number
     LEA DX, TASK_NUM
     MOV AH, 09H
     INT 21H
     
+    ; Get task number
     MOV AH, 01H
     INT 21H
-    SUB AL, '1'
+    SUB AL, '1'     ; Convert to 0-based index
     
-    CALL CHECK_RANGE
-    CMP AL, 0FFH   ; Check error flag
-    JE LOCAL_INVALID_HANDLER1 ; Use local handler
+    ; Validate task number
+    CMP AL, 0
+    JL INVALID_UPD
     
-    XOR AH, AH
+    MOV BL, TASK_COUNT
+    DEC BL          ; Convert count to 0-based for comparison
+    CMP AL, BL
+    JG INVALID_UPD
+    
+    ; Calculate task address
+    XOR AH, AH      ; Clear high byte of AX
     MOV BX, TASK_SIZE
-    MUL BX
+    MUL BX          ; AX = task_number * TASK_SIZE
     LEA DI, TASKS
-    ADD DI, AX
+    ADD DI, AX      ; DI now points to the task
     
+    ; Show status prompt
     LEA DX, STATUS_MSG
     MOV AH, 09H
     INT 21H
     
+    ; Get new status
     MOV AH, 01H
     INT 21H
     
+    ; Validate status input (must be 0 or 1)
+    CMP AL, '0'
+    JB INVALID_UPD
+    CMP AL, '1'
+    JA INVALID_UPD
+    
+    ; Update status
     MOV [DI + 50], AL
+    
+    ; Show success message
     LEA DX, SUCCESS_MSG
-    JMP SHORT SHOW_UPD
+    JMP SHOW_UPD
+
+INVALID_UPD:
+    LEA DX, EMPTY_MSG    ; Use EMPTY_MSG for invalid input
+    JMP SHOW_UPD
 
 EMPTY_UPD:
     LEA DX, EMPTY_MSG
 SHOW_UPD:
     CALL SHOW_MESSAGE
+    RET
 UPDATE_TASK ENDP
 
 PRINT_NEWLINE PROC
@@ -207,6 +245,7 @@ GET_CHAR:
     JNE GET_CHAR
     
 GET_DONE:
+    MOV BYTE PTR [DI], '$'    ; Add string terminator right after input
     POP CX
     RET
 GET_STRING ENDP
@@ -254,6 +293,7 @@ SHOW_AND_RETURN:
     CALL SHOW_MESSAGE
 CREATE_TASK ENDP
 
+; Modified VIEW_TASKS procedure - Status display removed
 VIEW_TASKS PROC
     CMP TASK_COUNT, 0
     JE EMPTY
@@ -267,6 +307,7 @@ VIEW_TASKS PROC
 NEXT_TASK:
     PUSH CX
     
+    ; Display task number
     MOV DL, '['
     MOV AH, 02H
     INT 21H
@@ -281,23 +322,34 @@ NEXT_TASK:
     MOV DL, ' '
     INT 21H
     
+    ; Display task text
     MOV DX, SI
     MOV AH, 09H
     INT 21H
     
+    ; Display status
     MOV DL, ' '
     MOV AH, 02H
     INT 21H
     MOV DL, '['
     INT 21H
-    MOV DL, [SI + 50]
+    
+    ; Check status and display 'D' if done
+    CMP BYTE PTR [SI + 50], '1'
+    JNE NOT_DONE
+    MOV DL, 'D'
+    JMP SHOW_STATUS
+NOT_DONE:
+    MOV DL, ' '
+SHOW_STATUS:
     INT 21H
+    
     MOV DL, ']'
     INT 21H
     
     CALL PRINT_NEWLINE
     
-    ADD SI, TASK_SIZE
+    ADD SI, TASK_SIZE  ; Move to next task
     POP CX
     LOOP NEXT_TASK
     JMP MENU

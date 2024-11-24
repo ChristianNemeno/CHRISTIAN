@@ -1,3 +1,7 @@
+; read me , this AAA file already has implemented created
+; view and dleted (from certain index ) the problem is that 
+; sa view naay excess sa right 
+
 .MODEL SMALL
 .STACK 100H
 .DATA
