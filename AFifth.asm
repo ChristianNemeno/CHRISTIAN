@@ -1,33 +1,24 @@
+; works CRUD DONE  
+
 
 .MODEL SMALL
 .STACK 100H
 .DATA
-
-OPENING_MSG DB 10,13,'----------------------------------------',10,13
-            DB '    WELCOME TO YOUR TO-DO LIST MANAGER',10,13
-            DB '----------------------------------------',10,13
-            DB ' Press any key to continue...',10,13,'$'
-    ; Data for login/register
-REGISTER_MSG DB 10,13,'--- Register ---',10,13,'Enter Username: $'
-LOGIN_MSG DB 10,13,'--- Login ---',10,13,'Enter Username: $'
-LOGIN_SUCCESS DB 10,13,'Login Successful! Welcome!',10,13,'$'
-LOGIN_FAILURE DB 10,13,'Login Failed! Try Again.',10,13,'$'
-USERNAME DB 20 DUP(0)
-PASSWORD DB 20 DUP(0)
-INPUT_USERNAME DB 20 DUP(0)
-INPUT_PASSWORD DB 20 DUP(0)
     ; Constants
     MAX_TASKS    EQU 10
     TASK_SIZE    EQU 52  ; 50 chars for task + 1 for status + 1 for '$'
     
     ; Messages
-    MENU_MSG     DB 10,13,'=== TODO List ===',10,13
-                 DB '1. Create Task',10,13
-                 DB '2. View Tasks',10,13
-                 DB '3. Delete Task',10,13
-                 DB '4. Update Task',10,13
-                 DB '5. Exit',10,13
+    MENU_MSG     DB 10,13,'               TODO List               ',10,13
+                 DB '               1. Create Task               ',10,13
+                 DB '               2. View Tasks               ',10,13
+                 DB '               3. Delete Task               ',10,13
+                 DB '               4. Update Task               ',10,13
+                 DB '               5. Exit               ',10,13
                  DB 'Choose option: $'
+
+
+
     INPUT_TASK   DB 10,13,'Enter task: $'
     TASK_NUM     DB 10,13,'Enter task number: $'
     STATUS_MSG   DB 10,13,'Status (1=Done, 0=Not Done): $'
@@ -46,14 +37,13 @@ INPUT_PASSWORD DB 20 DUP(0)
                  DW OFFSET UPDATE_TASK
                  DW OFFSET EXIT_PROG
 
+    
+
 .CODE
 MAIN PROC
     ; Initialize data segment
     MOV AX, @DATA
     MOV DS, AX
-    JMP START_SCREEN
-    JMP REGISTER
-
 
 GOTO_MENU:
     JMP MENU
@@ -101,78 +91,9 @@ MENU_INVALID:
     JMP MENU
 CHECK_MENU_CHOICE ENDP
 
-; Opening Screen
-START_SCREEN:
-    MOV AH, 09H
-    LEA DX, OPENING_MSG
-    INT 21H
-    MOV AH, 08H ; Wait for any key press
-    INT 21H
-    RET
 
 
-; Register and Login System
-REGISTER:
-    MOV AH, 09H
-    LEA DX, REGISTER_MSG
-    INT 21H
-    ; Input username
-    LEA DI, USERNAME
-    CALL INPUT_STRING
-    ; Input password
-    LEA DI, PASSWORD
-    CALL INPUT_STRING
-    RET
-
-LOGIN:
-    MOV AH, 09H
-    LEA DX, LOGIN_MSG
-    INT 21H
-    ; Input username
-    LEA DI, INPUT_USERNAME
-    CALL INPUT_STRING
-    ; Input password
-    LEA DI, INPUT_PASSWORD
-    CALL INPUT_STRING
-    ; Compare credentials
-    LEA SI, USERNAME
-    LEA DI, INPUT_USERNAME
-    CALL STRING_COMPARE
-    JNZ LOGIN_FAIL
-    LEA SI, PASSWORD
-    LEA DI, INPUT_PASSWORD
-    CALL STRING_COMPARE
-    JNZ LOGIN_FAIL
-    MOV AH, 09H
-    LEA DX, LOGIN_SUCCESS
-    INT 21H
-    RET
-
-LOGIN_FAIL:
-    MOV AH, 09H
-    LEA DX, LOGIN_FAILURE
-    INT 21H
-    RET
-
-; Helper subroutines
-INPUT_STRING:
-    MOV AH, 0AH
-    INT 21H
-    RET
-
-STRING_COMPARE:
-    CLD
-    REPE CMPSB
-    JE STRING_MATCH
-    MOV AL, 1
-    RET
-STRING_MATCH:
-    XOR AL, AL
-    RET
-
-
-
-
+;C R U D
 ; Fixed DELETE_TASK procedure
 DELETE_TASK PROC
     CMP TASK_COUNT, 0
