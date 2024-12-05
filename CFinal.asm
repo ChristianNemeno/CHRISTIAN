@@ -56,9 +56,9 @@
 
     update_car_title       db 13,10,10,10,10,'                            CHANGE DAYS TILL RETURN',13,10,0
     update_carID_prompt    db 13,10,10,'   Enter Car no. to Update:',0
-    update_cardays_prompt  db 13,10,'   Enter the new number of days until due to return book:',0
+    update_cardays_prompt  db 13,10,'   Enter the new number of days until due to return car:',0
 
-    return_book_title       db 13,10,10,10,10,'                                   RETURN BOOK',13,10,0
+    return_book_title       db 13,10,10,10,10,'                                   RETURN CAR',13,10,0
     return_bookID_prompt    db 13,10,10,'   Enter Car no. to Return:',0
 
     
