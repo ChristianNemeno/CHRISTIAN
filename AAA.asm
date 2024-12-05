@@ -1,327 +1,275 @@
-; read me , this AAA file already has implemented created
-; view and dleted (from certain index ) the problem is that 
-; sa view naay excess sa right 
-
-.MODEL SMALL
-.STACK 100H
-.DATA
-    ; Constants
-    MAX_TASKS    EQU 10
-    TASK_SIZE    EQU 52  ; 50 chars for task + 1 for status + 1 for '$'
-    
-    ; Messages
-    MENU_MSG     DB 10,13,'=== TODO List ===',10,13
-                 DB '1. Create Task',10,13
-                 DB '2. View Tasks',10,13
-                 DB '3. Delete Task',10,13
-                 DB '4. Update Task',10,13
-                 DB '5. Exit',10,13
-                 DB 'Choose option: $'
-    INPUT_TASK   DB 10,13,'Enter task: $'
-    TASK_NUM     DB 10,13,'Enter task number: $'
-    STATUS_MSG   DB 10,13,'Status (1=Done, 0=Not Done): $'
-    FULL_MSG     DB 10,13,'Task list is full!$'
-    EMPTY_MSG    DB 10,13,'No tasks found!$'
-    SUCCESS_MSG  DB 10,13,'Operation successful!$'
-    NEWLINE      DB 10,13,'$'
-    
-    ; Data structures
-    TASKS        DB MAX_TASKS * TASK_SIZE DUP(0)  ; Array of tasks
-    TASK_COUNT   DB 0                             ; Current number of tasks
-    TEMP_STR     DB TASK_SIZE DUP(0)             ; Temporary string buffer
-    JUMP_TABLE   DW OFFSET CREATE_TASK
-                 DW OFFSET VIEW_TASKS
-                 DW OFFSET DELETE_TASK
-                 DW OFFSET UPDATE_TASK
-                 DW OFFSET EXIT_PROG
-
-.CODE
-MAIN PROC
-    ; Initialize data segment
-    MOV AX, @DATA
-    MOV DS, AX
-
-GOTO_MENU:
-    JMP MENU
-
-MENU:
-    ; Display menu
-    LEA DX, MENU_MSG
-    MOV AH, 09H
-    INT 21H
-    
-    ; Get choice
-    MOV AH, 01H
-    INT 21H
-    
-    ; Convert choice to index
-    SUB AL, '1'
-    CALL CHECK_MENU_CHOICE
-    
-    ; Calculate jump address
-    XOR AH, AH
-    SHL AX, 1      ; Multiply by 2 for word offset
-    MOV SI, AX
-    JMP WORD PTR [JUMP_TABLE + SI]
-
-; Utility procedures
-CHECK_RANGE PROC
-    CMP AL, 0
-    JL INVALID_CHECK
-    CMP AL, TASK_COUNT
-    JAE INVALID_CHECK
-    RET
-INVALID_CHECK:
-    MOV AL, 0FFH   ; Set error flag
-    RET
-CHECK_RANGE ENDP
-
-CHECK_MENU_CHOICE PROC
-    CMP AL, 4
-    JAE MENU_INVALID
-    RET
-MENU_INVALID:
-    POP AX      ; Remove return address
-    JMP MENU
-CHECK_MENU_CHOICE ENDP
-
-; Fixed DELETE_TASK procedure
-DELETE_TASK PROC
-    CMP TASK_COUNT, 0
-    JE EMPTY_DEL
-    
-    ; Display prompt
-    LEA DX, TASK_NUM
-    MOV AH, 09H
-    INT 21H
-    
-    ; Get task number
-    MOV AH, 01H
-    INT 21H
-    SUB AL, '1'
-    
-    ; Validate input
-    CMP AL, 0
-    JL INVALID_DEL
-    
-    MOV BL, TASK_COUNT
-    DEC BL
-    CMP AL, BL
-    JG INVALID_DEL
-    
-    ; Calculate source and destination addresses
-    XOR AH, AH
-    MOV BX, TASK_SIZE
-    MUL BX          ; AX = task_number * TASK_SIZE
-    LEA SI, TASKS
-    ADD SI, AX      ; SI points to task to delete
-    MOV DI, SI      ; DI = destination
-    ADD SI, TASK_SIZE  ; SI = source
-    
-    ; Calculate number of bytes to move
-    MOV AL, TASK_COUNT
-    SUB AL, 1       ; Convert to 0-based index
-    SUB AL, [BP-1]  ; Subtract task number
-    MOV CL, AL      ; CL = number of tasks to move
-    
-    ; If this is the last task, no need to move
-    CMP CL, 0
-    JLE DEL_LAST
-    
-    ; Move remaining tasks
-    MOV CH, 0       ; Clear high byte of CX
-    MOV BX, TASK_SIZE
-DEL_LOOP:
-    PUSH CX
-    MOV CX, TASK_SIZE
-    REP MOVSB
-    POP CX
-    LOOP DEL_LOOP
-    
-DEL_LAST:
-    DEC TASK_COUNT
-    LEA DX, SUCCESS_MSG
-    JMP SHOW_DEL
-
-INVALID_DEL:
-    LEA DX, EMPTY_MSG
-    JMP SHOW_DEL
-
-EMPTY_DEL:
-    LEA DX, EMPTY_MSG
-SHOW_DEL:
-    CALL SHOW_MESSAGE
-    RET
-DELETE_TASK ENDP
-
-UPDATE_TASK PROC
-    LOCAL_INVALID_HANDLER1:   ; Local handler for this procedure
-        JMP GOTO_MENU
-
-    CMP TASK_COUNT, 0
-    JE EMPTY_UPD
-    
-    LEA DX, TASK_NUM
-    MOV AH, 09H
-    INT 21H
-    
-    MOV AH, 01H
-    INT 21H
-    SUB AL, '1'
-    
-    CALL CHECK_RANGE
-    CMP AL, 0FFH   ; Check error flag
-    JE LOCAL_INVALID_HANDLER1 ; Use local handler
-    
-    XOR AH, AH
-    MOV BX, TASK_SIZE
-    MUL BX
-    LEA DI, TASKS
-    ADD DI, AX
-    
-    LEA DX, STATUS_MSG
-    MOV AH, 09H
-    INT 21H
-    
-    MOV AH, 01H
-    INT 21H
-    
-    MOV [DI + 50], AL
-    LEA DX, SUCCESS_MSG
-    JMP SHORT SHOW_UPD
-
-EMPTY_UPD:
-    LEA DX, EMPTY_MSG
-SHOW_UPD:
-    CALL SHOW_MESSAGE
-UPDATE_TASK ENDP
-
-PRINT_NEWLINE PROC
-    PUSH AX
-    PUSH DX
-    LEA DX, NEWLINE
-    MOV AH, 09H
-    INT 21H
-    POP DX
-    POP AX
-    RET
-PRINT_NEWLINE ENDP
-
-GET_STRING PROC
-    PUSH CX
-    XOR CX, CX
-    
-GET_CHAR:
-    MOV AH, 01H
-    INT 21H
-    
-    CMP AL, 13
-    JE GET_DONE
-    
-    MOV [DI], AL
-    INC DI
-    INC CX
-    CMP CX, 49
-    JNE GET_CHAR
-    
-GET_DONE:
-    POP CX
-    RET
-GET_STRING ENDP
-
-SHOW_MESSAGE PROC
-    MOV AH, 09H
-    INT 21H
-    JMP MENU
-SHOW_MESSAGE ENDP
-
-CREATE_TASK PROC
-    MOV AL, TASK_COUNT
-    CMP AL, MAX_TASKS
-    JE FULL
-    
-    LEA DX, INPUT_TASK
-    MOV AH, 09H
-    INT 21H
-    
-    XOR AX, AX
-    MOV AL, TASK_COUNT
-    MOV BX, TASK_SIZE
-    MUL BX
-    LEA DI, TASKS
-    ADD DI, AX
-    
-    CALL GET_STRING
-    
-    MOV AL, '0'
-    MOV [DI + 50], AL
-    MOV AL, '$'
-    MOV [DI + 51], AL
-    
-    INC TASK_COUNT
-    JMP SUCCESS
-
-FULL:
-    LEA DX, FULL_MSG
-    JMP SHORT SHOW_AND_RETURN
-
-SUCCESS:
-    LEA DX, SUCCESS_MSG
-
-SHOW_AND_RETURN:
-    CALL SHOW_MESSAGE
-CREATE_TASK ENDP
-
-; Modified VIEW_TASKS procedure - Status display removed
-VIEW_TASKS PROC
-    CMP TASK_COUNT, 0
-    JE EMPTY
-    
-    CALL PRINT_NEWLINE
-    
-    XOR CX, CX
-    MOV CL, TASK_COUNT
-    LEA SI, TASKS
-    
-NEXT_TASK:
-    PUSH CX
-    
-    ; Display task number
-    MOV DL, '['
-    MOV AH, 02H
-    INT 21H
-    
-    MOV DL, TASK_COUNT
-    SUB DL, CL
-    ADD DL, '1'
-    INT 21H
-    
-    MOV DL, ']'
-    INT 21H
-    MOV DL, ' '
-    INT 21H
-    
-    ; Display task text with proper termination
-    MOV DX, SI
-    MOV AH, 09H
-    INT 21H
-    
-    CALL PRINT_NEWLINE
-    
-    ADD SI, TASK_SIZE  ; Move to next task
-    POP CX
-    LOOP NEXT_TASK
-    JMP MENU
-
-EMPTY:
-    LEA DX, EMPTY_MSG
-    CALL SHOW_MESSAGE
-VIEW_TASKS ENDP
-
-EXIT_PROG PROC
-    MOV AH, 4CH
-    INT 21H
-EXIT_PROG ENDP
-
-MAIN ENDP
-END MAIN
+; Filename: MIDTERM.ASM
+; CS243 Lab Hands-on Midterm Exam
+; First Semester SY 2024 - 2025
+; Student Name: Christian A. Nemeno
+; Date Finished: 10/11/2024
+ 
+.model small
+stack 100h
+.data
+  h1 db ' Online Grocery Form $'
+  h2 db 0ah, ' Programmer: Christian A. Nemeno $'
+  h3 db 0ah, ' Date: 10/11/2024$'
+ 
+ 
+  List1 db 100, ?, 100 dup(' ')
+  List2 db 100, ?, 100 dup(' ')
+  List3 db 100, ?, 100 dup(' ')
+  List4 db 100, ?, 100 dup(' ')
+  List5 db 100, ?, 100 dup(' ')
+ 
+  h4 db 0ah,0ah, ' Please enter your 5 grocery items: $'
+  promptList1 db 0ah,' Item No. 1: $'
+  promptList2 db 0ah,' Item No. 2: $'
+  promptList3 db 0ah,' Item No. 3: $'
+  promptList4 db 0ah,' Item No. 4: $'
+  promptList5 db 0ah,' Item No. 5: $'
+ 
+  ordersum db 0ah,0ah,'              ORDER SUMMARY $'
+ 
+  IT1 db 0ah,'   Item No. 1:    ',179,'$'
+  IT2 db 0ah,'   Item No. 2:    ',179,'$'
+  IT3 db 0ah,'   Item No. 3:    ',179,'$'
+  IT4 db 0ah,'   Item No. 4:    ',179,'$'
+  IT5 db 0ah,'   Item No. 5:    ',179,'$'
+ 
+ 
+  dash db ' - $'
+ 
+  foot1 db 0ah,0ah, '  Thank you for shopping!$'
+  foot2 db 0ah,'  Order again soon.$'
+.code
+start:
+  mov ax, @data
+  mov ds, ax
+ 
+  mov ax, 3
+  int 10h
+ 
+  mov ah, 09h
+  lea dx, h1
+  int 21h
+ 
+  mov ah, 09h
+  lea dx, h2
+  int 21h
+ 
+  mov ah, 09h
+  lea dx, h3
+  int 21h
+ 
+  mov ah, 09h
+  lea dx, h4
+  int 21h
+ 
+ 
+ 
+ 
+  ;Prompt inputs
+ 
+ 
+  mov ah, 09h
+  lea dx, promptList1
+  int 21h
+ 
+  mov ah, 0ah
+  lea dx, List1
+  int 21h
+ 
+  mov ah, 09h
+  lea dx, promptList2
+  int 21h
+ 
+  mov ah, 0ah
+  lea dx, List2
+  int 21h
+ 
+  mov ah, 09h
+  lea dx, promptList3
+  int 21h
+ 
+  mov ah, 0ah
+  lea dx, List3
+  int 21h
+ 
+  mov ah, 09h
+  lea dx, promptList4
+  int 21h
+ 
+  mov ah, 0ah
+  lea dx, List4
+  int 21h
+ 
+  mov ah, 09h
+  lea dx, promptList5
+  int 21h
+ 
+  mov ah, 0ah
+  lea dx, List5
+  int 21h
+ 
+;output header
+ 
+    mov ah, 06h
+    xor cl, cl
+    xor ax, ax
+ 
+    mov ah, 06h
+    mov ch, 11
+    mov cl, 2
+    mov dh, 11
+    mov dl, 40
+    mov bh, 4eh
+    int 10h
+ 
+    lea dx, ordersum
+    mov ah, 9
+    int 21h
+ 
+;output list
+    mov ah, 06h
+    xor cl, cl
+    xor ax, ax
+ 
+    mov ah, 06h
+    mov ch, 12
+    mov cl, 2
+    mov dh, 12
+    mov dl, 40
+    mov bh, 70h
+    int 10h
+ 
+    lea dx, IT1
+    mov ah, 9
+    int 21h
+ 
+    xor bx, bx
+    mov bl, List1[1]
+    mov List1[bx+2], '$'
+    lea dx, List1 + 2
+    mov ah, 09h
+    int 21h
+ 
+    mov ah, 06h
+    xor cl, cl
+    xor ax, ax
+ 
+    mov ah, 06h
+    mov ch, 13
+    mov cl, 2
+    mov dh, 13
+    mov dl, 40
+    mov bh, 30h
+    int 10h
+ 
+    lea dx, IT2
+    mov ah, 9
+    int 21h
+ 
+    xor bx, bx
+    mov bl, List2[1]
+    mov List2[bx+2], '$'
+    lea dx, List2 + 2
+    mov ah, 09h
+    int 21h
+ 
+ 
+    mov ah, 06h
+    xor cl, cl
+    xor ax, ax
+ 
+    mov ah, 06h
+    mov ch, 14
+    mov cl, 2
+    mov dh, 14
+    mov dl, 40
+    mov bh, 70h
+    int 10h
+ 
+    lea dx, IT3
+    mov ah, 9
+    int 21h
+ 
+    xor bx, bx
+    mov bl, List3[1]
+    mov List3[bx+2], '$'
+    lea dx, List3 + 2
+    mov ah, 09h
+    int 21h
+ 
+    mov ah, 06h
+    xor cl, cl
+    xor ax, ax
+ 
+    mov ah, 06h
+    mov ch, 15
+    mov cl, 2
+    mov dh, 15
+    mov dl, 40
+    mov bh, 30h
+    int 10h
+ 
+    lea dx, IT4
+    mov ah, 9
+    int 21h
+ 
+    xor bx, bx
+    mov bl, List4[1]
+    mov List4[bx+2], '$'
+    lea dx, List4 + 2
+    mov ah, 09h
+    int 21h
+ 
+    mov ah, 06h
+    xor cl, cl
+    xor ax, ax
+ 
+    mov ah, 06h
+    mov ch, 16
+    mov cl, 2
+    mov dh, 16
+    mov dl, 40
+    mov bh, 70h
+    int 10h
+ 
+    lea dx, IT5
+    mov ah, 9
+    int 21h
+ 
+    xor bx, bx
+    mov bl, List5[1]
+    mov List5[bx+2], '$'
+    lea dx, List5 + 2
+    mov ah, 09h
+    int 21h
+ 
+ 
+  ;verification output
+ 
+ 
+;display
+   
+    mov ah, 09h
+    lea dx, foot1
+    int 21h
+ 
+    mov ah, 06h
+    xor cl, cl
+    xor ax, ax
+ 
+    mov ah, 06h
+    mov ch, 19
+    mov cl, 2
+    mov dh, 19
+    mov dl, 18
+    mov bh, 0ceh
+    int 10h
+ 
+   
+    mov ah, 09h
+    lea dx, foot2
+    int 21h
+ 
+  int 27h
+end start
+ 

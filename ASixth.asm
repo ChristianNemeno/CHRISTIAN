@@ -4,25 +4,36 @@
 .MODEL SMALL
 .STACK 100H
 .DATA
+    welcome db 'Welcome to my Todo List!$'
+    
+    ; Screen dimensions and centering calculations
+    screen_width equ 80
+    screen_height equ 25
+    msg_length equ 24  ; length of 'Welcome to my Todo List!'
     ; Constants
     MAX_TASKS    EQU 10
     TASK_SIZE    EQU 52  ; 50 chars for task + 1 for status + 1 for '$'
     
     ; Messages
-    MENU_MSG     DB 10,13,'=== TODO List ===',10,13
-                 DB '1. Create Task',10,13
-                 DB '2. View Tasks',10,13
-                 DB '3. Delete Task',10,13
-                 DB '4. Update Task',10,13
-                 DB '5. Exit',10,13
-                 DB 'Choose option: $'
-    INPUT_TASK   DB 10,13,'Enter task: $'
-    TASK_NUM     DB 10,13,'Enter task number: $'
-    STATUS_MSG   DB 10,13,'Status (1=Done, 0=Not Done): $'
-    FULL_MSG     DB 10,13,'Task list is full!$'
-    EMPTY_MSG    DB 10,13,'No tasks found!$'
-    SUCCESS_MSG  DB 10,13,'Operation successful!$'
-    NEWLINE      DB 10,13,'$'
+    MENU_MSG     DB 10,13,'                     TODO List',10,13
+                 DB '                        1. Create Task',10,13
+                 DB '                        2. View Tasks',10,13
+                 DB '                        3. Delete Task',10,13
+                 DB '                        4. Update Task',10,13
+                 DB '                        5. Exit',10,13
+                 DB '                        Choose option: $'
+
+
+
+    BUHATONON DB 13,10,10,'Tasks$',13,10
+    INPUT_TASK db 13, 10,10, 'Enter task: $'
+
+    TASK_NUM     DB 10,10,13,'Enter task number: $'
+    STATUS_MSG   DB 10,10,13,'Status (1=Done, 0=Not Done): $'
+    FULL_MSG     DB 10,10,13,'Task list is full!$'
+    EMPTY_MSG    DB 10,10,13,'No tasks found!$'
+    SUCCESS_MSG  DB 10,10,13,'Operation successful!$'
+    NEWLINE      DB 10,10,13,'$'
     
     ; Data structures
     TASKS        DB MAX_TASKS * TASK_SIZE DUP(0)  ; Array of tasks
@@ -34,20 +45,34 @@
                  DW OFFSET UPDATE_TASK
                  DW OFFSET EXIT_PROG
 
+    
+
 .CODE
 MAIN PROC
-    ; Initialize data segment
-    MOV AX, @DATA
-    MOV DS, AX
+    mov ax, @data
+    mov ds, ax
+
+    CALL STARTING
 
 GOTO_MENU:
     JMP MENU
 
 MENU:
+    
+    CALL ClearScreen
+
+    
+    mov ah, 02h    ; BIOS interrupt to set cursor position
+    mov bh, 0      ; Page number (usually 0)
+    mov dh, 9    ; Row (0-24)
+    mov dl, 0 ; Column (0-79)
+    int 10h
+
     ; Display menu
     LEA DX, MENU_MSG
-    MOV AH, 09H
-    INT 21H
+    CALL PrintString
+
+    
     
     ; Get choice
     MOV AH, 01H
@@ -63,7 +88,16 @@ MENU:
     MOV SI, AX
     JMP WORD PTR [JUMP_TABLE + SI]
 
+
+
 ; Utility procedures
+SetCursor PROC
+    mov ah, 02h          ; BIOS function to set cursor position
+    mov bh, 0            ; Page number (0 for default screen)
+    int 10h              ; Call BIOS interrupt
+    ret
+SetCursor ENDP
+
 CHECK_RANGE PROC
     CMP AL, 0
     JL INVALID_CHECK
@@ -83,9 +117,38 @@ MENU_INVALID:
     POP AX      ; Remove return address
     JMP MENU
 CHECK_MENU_CHOICE ENDP
+
+GET_STRING PROC
+    PUSH CX
+    XOR CX, CX
+    
+GET_CHAR:
+    MOV AH, 01H
+    INT 21H
+    
+    CMP AL, 13
+    JE GET_DONE
+    
+    MOV [DI], AL
+    INC DI
+    INC CX
+    CMP CX, 49
+    JNE GET_CHAR
+    
+GET_DONE:
+    MOV BYTE PTR [DI], '$'    ; Add string terminator right after input
+    POP CX
+    RET
+GET_STRING ENDP
+
 SHOW_MESSAGE PROC
     MOV AH, 09H
     INT 21H
+
+    mov ah, 00h
+    int 16h
+    
+
     JMP MENU
 SHOW_MESSAGE ENDP
 
@@ -100,9 +163,64 @@ PRINT_NEWLINE PROC
     RET
 PRINT_NEWLINE ENDP
 
+PrintString PROC
+    mov ah, 09h      ; DOS interrupt function to display a string
+    int 21h          ; Call DOS interrupt
+    ret
+PrintString ENDP
 
 
-;CRUD
+STARTING PROC 
+; Clear the screen
+    mov ax, 0600h   ; Scroll window up
+    mov bh, 07h     ; Normal attribute (white text on black background)
+    mov cx, 0000h   ; Top left corner (row 0, column 0)
+    mov dx, 184Fh   ; Bottom right corner (row 24, column 79)
+    int 10h         ; Video BIOS interrupt
+
+    ; Move cursor to top left
+    mov ah, 02h
+    mov bh, 0       ; Page 0
+    mov dx, 0000h   ; Row 0, Column 0
+    int 10h
+
+    ; Calculate starting column for centering
+    mov ah, 0
+    mov al, screen_width
+    sub al, msg_length
+    shr al, 1      ; Divide by 2 to center
+
+    ; Set cursor position
+    mov dl, al     ; Column (calculated center)
+    mov dh, 12     ; Row (middle of screen)
+    mov ah, 02h    ; BIOS interrupt to set cursor position
+    int 10h
+
+    ; Display welcome message
+    mov ah, 09h
+    mov dx, offset welcome
+    int 21h
+
+    ; Wait for key press
+    mov ah, 00h
+    int 16h
+
+    RET
+STARTING ENDP
+
+ClearScreen PROC
+    mov ah, 06h      ; Scroll up function
+    mov al, 0        ; Clear entire screen
+    mov bh, 07h      ; Attribute: white on black
+    mov cx, 0        ; Start at top-left (row 0, col 0)
+    mov dx, 184Fh    ; End at bottom-right (row 24, col 79)
+    int 10h          ; Call BIOS interrupt
+    ret
+ClearScreen ENDP
+
+
+
+;C R U D
 ; Fixed DELETE_TASK procedure
 DELETE_TASK PROC
     CMP TASK_COUNT, 0
@@ -235,32 +353,6 @@ SHOW_UPD:
     RET
 UPDATE_TASK ENDP
 
-
-
-GET_STRING PROC
-    PUSH CX
-    XOR CX, CX
-    
-GET_CHAR:
-    MOV AH, 01H
-    INT 21H
-    
-    CMP AL, 13
-    JE GET_DONE
-    
-    MOV [DI], AL
-    INC DI
-    INC CX
-    CMP CX, 49
-    JNE GET_CHAR
-    
-GET_DONE:
-    MOV BYTE PTR [DI], '$'    ; Add string terminator right after input
-    POP CX
-    RET
-GET_STRING ENDP
-
-
 CREATE_TASK PROC
     MOV AL, TASK_COUNT
     CMP AL, MAX_TASKS
@@ -296,10 +388,13 @@ SUCCESS:
 
 SHOW_AND_RETURN:
     CALL SHOW_MESSAGE
+    
 CREATE_TASK ENDP
-
 ; Modified VIEW_TASKS procedure - Status display removed
 VIEW_TASKS PROC
+    LEA dx, BUHATONON
+    CALL PrintString
+
     CMP TASK_COUNT, 0
     JE EMPTY
     
@@ -357,6 +452,11 @@ SHOW_STATUS:
     ADD SI, TASK_SIZE  ; Move to next task
     POP CX
     LOOP NEXT_TASK
+
+
+    mov ah, 00h
+    int 16h
+
     JMP MENU
 
 EMPTY:
