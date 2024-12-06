@@ -346,7 +346,7 @@ CHANGE_CAR_RETURN_DAYS proc
     ret
 change_user_record1:
     cmp user1_records[si],0
-    je not_borrowing_book
+    je not_renting_car
     
     xor cx, cx
     mov cx, temp_manipulate_record_var_days
@@ -354,7 +354,7 @@ change_user_record1:
     ret
 change_user_record2:
     cmp user2_records[si],0
-    je not_borrowing_book
+    je not_renting_car
     
     
     xor cx, cx
@@ -363,14 +363,14 @@ change_user_record2:
     ret
 change_user_record3:
     cmp user3_records[si],0
-    je not_borrowing_book
+    je not_renting_car
     
     
     xor cx, cx
     mov cx, temp_manipulate_record_var_days
     mov user3_records_days[si],cx
     ret
-not_borrowing_book:
+not_renting_car:
     mov dl, 10
     call PRINT_CHARACTER
     lea dx, car_not_borrowed
